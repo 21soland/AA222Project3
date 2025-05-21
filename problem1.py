@@ -1,19 +1,42 @@
 import numpy as np
 from windfarm import WindFarm, Turbine
 
-def main():
-    n_turbines = 10
-    locations= np.random.rand(n_turbines, 2) * 10
-    turbines = [Turbine(location, n_turbines, i) for i, location in enumerate(locations)]
-    windfarm = WindFarm(turbines)
-    print(windfarm.efficiency())
-    windfarm.plot()
-
-def evenly_distribute(n_turbines):
-    raise NotImplementedError("Not implemented")
-
 def optimize(n_turbines, n_iterations):
     raise NotImplementedError("Not implemented")
+
+# 
+def optimize_3():
+    # Start with brute forcing the best configuration
+    windfarm = WindFarm(3)
+    best_efficiency = windfarm.efficiency()
+    print(f"Initial wind farm efficiency: {best_efficiency}")
+    best_configuration = windfarm.turbines
+    brute_force_iterations = 1
+    # Brute force the best configuration
+    for _ in range(brute_force_iterations):
+        # Redistribute the turbines
+        windfarm.redistribute()
+        # Update the distances
+        windfarm.update_all_distances()
+        # Check if the efficiency is better
+        if windfarm.efficiency() > best_efficiency:
+            best_efficiency = windfarm.efficiency()
+            best_configuration = windfarm.turbines
+    windfarm.set_turbines(best_configuration)
+    print(f"Brute force wind farm efficiency: {best_efficiency}")
+
+    # Cross-entropy optimize the turbines
+    n_iterations = 5 # How many times it runs cross-entropy on each point
+    samples = 100 # How many points it samples
+    cycles = 10 # How many times it will cycle through all of the points
+    windfarm.cross_entropy_optimize(n_iterations, samples, cycles)
+
+    return windfarm
+
+def main():
+    n_iterations = 10000
+    windfarm = optimize_3()
+    windfarm.plot()
 
 if __name__ == "__main__":
     main()

@@ -1,11 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+epsilon = 1e-6
 
 class WindFarm:
-    def __init__(self, turbines):
-        self.turbines = turbines
-        self.n_turbines = len(turbines)
+    def __init__(self, n_turbines):
+        self.turbines = None
+        self.n_turbines = n_turbines
 
         # Turbine constraints
         self.x1, self.y1 = (5,5)
@@ -14,11 +15,12 @@ class WindFarm:
         self.radius2 = 1
         self.x3, self.y3 = (0,10)
 
+        # Create and distribute the turbines
+        self.redistribute()
+
         # Update the distances to all turbines
-        # O(N^2) complexity
-        for i in range(self.n_turbines):
-            for j in range(self.n_turbines):
-                self.turbines[i].update_distance(self.turbines[j])
+        self.update_all_distances()
+
 
     # Add the efficiency of all turbines
     def efficiency(self):
@@ -27,6 +29,136 @@ class WindFarm:
             total_efficiency += turbine.efficiency()
         return total_efficiency
     
+    # Redistribute the turbines
+    def redistribute(self):
+        # Clear the turbines
+        self.turbines = []
+
+        # Uniformly distribute the turbines
+        permutation = np.random.permutation(self.n_turbines)
+        grid_size = 10
+        scale_factor = grid_size / self.n_turbines
+        for n in range(self.n_turbines):
+            # Use a randomized latin square method
+            x = round((np.random.random() + n) * scale_factor,2)
+            y = round((np.random.random() + permutation[n]) * scale_factor,2)
+
+            # If the point doesn't lie in the constraints, then just place it completely randomly until it does
+            while not self.check_constraints(x,y):
+                x = np.random.random() * grid_size
+                y = np.random.random() * grid_size
+
+            # Add the turbine to the list
+            self.turbines.append(Turbine(np.array([x,y]), self.n_turbines, n))
+    
+    # Check if a point lies within the constraints
+    def check_constraints(self, x,y):
+        x1, y1 = 5,5
+        r1 = 2
+        x2, y2 = 0,0
+        r2 = 1
+        x3, y3 = 0,10
+        r3 = 1
+        if(x <= 0 or x >= 10 or y <= 0 or y >= 10):
+            return False
+        if (x-x1)**2 + (y-y1)**2 < r1**2:
+            return False
+        if (x-x2)**2 + (y-y2)**2 < r2**2:
+            return False
+        if (x-x3)**2 + (y-y3)**2 < r3**2:
+            return False
+        return True
+    
+    # Update the distances to all turbines
+    def update_all_distances(self):
+        # O(N^2) complexity
+        for i in range(self.n_turbines):
+            for j in range(self.n_turbines):
+                if i != j:
+                    self.turbines[i].update_distance(self.turbines[j])
+
+    def set_turbines(self, turbines):
+        self.turbines = turbines
+        self.update_all_distances()
+    
+    # Cross-entropy optimize each turbine
+    def cross_entropy_optimize(self, n_iterations, samples, cycles):
+        # Cycle through the full turbine list
+        n_best = 3
+        sigma1 = 5
+        sigma2 = sigma1
+        print(f"Starting cross-entropy optimization with {n_iterations} iterations, {samples} samples, and {cycles} cycles")
+        print(f"Initial cross-entropy efficiency: {self.efficiency()}")
+        for cycle in range(cycles):
+            print(f"Cycle {cycle} of {cycles}, Current efficiency: {self.efficiency()}")
+            for i in range(self.n_turbines):
+                # Get the n_best efficiencies, x, and y
+                last_nbest_efficiencies = np.zeros(n_best)
+                last_nbest_x = np.zeros(n_best)
+                last_nbest_y = np.zeros(n_best)
+
+                # Initialize all values to current efficiency
+                current_efficiency = self.efficiency()
+                last_nbest_efficiencies.fill(current_efficiency)
+                last_nbest_x.fill(self.turbines[i].x)
+                last_nbest_y.fill(self.turbines[i].y)
+
+                new_nbest_efficiencies = last_nbest_efficiencies.copy()
+                new_nbest_x = last_nbest_x.copy()
+                new_nbest_y = last_nbest_y.copy()
+
+                for q in range(n_iterations):
+                    # Generate samples of random points from normal distribution centered on current turbine
+                    x_samples = np.random.normal(0, sigma2, samples)
+                    y_samples = np.random.normal(0, sigma2, samples)
+                    # Try each sample point
+                    for j in range(samples):
+                        # Evenly sample the last n_best points
+                        pointx = x_samples[j] + last_nbest_x[samples % n_best]
+                        pointy = y_samples[j] + last_nbest_y[samples % n_best]
+
+                        # Check if the point is within constraints
+                        if self.check_constraints(pointx, pointy):
+                            # Update the location of the turbine
+                            self.turbines[i].update_location(pointx, pointy)
+
+                            # Update all the turbines
+                            # O(N) complexity
+                            for k in range(self.n_turbines):
+                                # Update the efficiency of the other turbines realitive to this turbine
+                                self.turbines[k].update_distance(self.turbines[i])
+                                # Update the efficiency of this turbine
+                                self.turbines[i].update_distance(self.turbines[k])
+                            
+                            # Check if the current efficiency is better than the n_best
+                            new_efficiency = self.efficiency()
+                            for f in range(n_best):
+                                if new_efficiency > new_nbest_efficiencies[f]:
+                                    print("found improvement")
+                                    new_nbest_efficiencies[f] = new_efficiency
+                                    new_nbest_x[f] = pointx
+                                    new_nbest_y[f] = pointy
+                                    break
+                        # Update the last n_best
+                        last_nbest_efficiencies = new_nbest_efficiencies.copy()
+                        last_nbest_x = new_nbest_x.copy()
+                        last_nbest_y = new_nbest_y.copy()
+
+                        # Update the sigma
+                        sigma2 = sigma2 * .5
+                # Update the location of turbine i to the best point
+                best_index = np.argmax(new_nbest_efficiencies)
+                self.turbines[i].update_location(new_nbest_x[best_index], new_nbest_y[best_index])
+
+                # Update all of the turbines
+                self.update_all_distances()
+                # Reset sigma
+                sigma2 = sigma1
+            # Update the overall sigma
+            sigma1 = sigma1 * .5
+        print(f"Final cross-entropy efficiency: {self.efficiency()}")
+                
+                
     # Plot the turbines
     def plot(self):
         # Plot the turbines
@@ -57,17 +189,23 @@ class Turbine:
         self.i = i
         self.distances = np.zeros(n_turbines)
         self.min_distance = np.inf
-        self.min_distance_index = 0
+        self.min_distance_index = None
+    
+    def update_location(self, x, y):
+        self.x = x
+        self.y = y
+        self.location = np.array([x, y])
     
     # Update the distance to a specific turbine
     def update_distance(self, turbine):
-        # Update the distance to the turbine
-        self.distances[turbine.i] = np.linalg.norm(self.location - turbine.location)
+        if not turbine.i == self.i:
+            # Update the distance to the turbine
+            self.distances[turbine.i] = np.linalg.norm(self.location - turbine.location)
 
-        # Update the minimum distance and index if the distance is smaller
-        if self.distances[turbine.i] < self.min_distance:
-            self.min_distance = self.distances[turbine.i]
-            self.min_distance_index = turbine.i
+            # Update the minimum distance and index if the distance is smaller
+            if self.distances[turbine.i] < self.min_distance:
+                self.min_distance = self.distances[turbine.i]
+                self.min_distance_index = turbine.i
 
     # Returns the distance to the closest turbine and its index
     def min_distance(self):
@@ -75,7 +213,8 @@ class Turbine:
     
     # Returns the efficiency of the turbine
     def efficiency(self):
-        return 1 / (1 + (1/self.min_distance))
+        # Avoid division by zero
+        return 1 / (1 + (1/(self.min_distance + epsilon)))
     
         
     
