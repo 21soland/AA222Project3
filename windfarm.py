@@ -29,6 +29,12 @@ class WindFarm:
             total_efficiency += turbine.efficiency()
         return total_efficiency
     
+    def temp_efficiency(self):
+        total_efficiency = 0
+        for turbine in self.turbines:
+            total_efficiency += turbine.temp_efficiency()
+        return total_efficiency
+    
     # Redistribute the turbines
     def redistribute(self):
         # Clear the turbines
@@ -75,7 +81,7 @@ class WindFarm:
         for i in range(self.n_turbines):
             for j in range(self.n_turbines):
                 if i != j:
-                    self.turbines[i].update_distance(self.turbines[j], False)
+                    self.turbines[i].update_actual_distance(self.turbines[j])
 
     def set_turbines(self, turbines):
         self.turbines = turbines
@@ -86,7 +92,7 @@ class WindFarm:
     def cross_entropy_optimize(self, n_iterations, samples, cycles):
         # Cycle through the full turbine list
         n_best = 3
-        sigma1 = 5
+        sigma1 = 10
         sigma2 = sigma1
         print(f"Starting cross-entropy optimization with {n_iterations} iterations, {samples} samples, and {cycles} cycles")
         print(f"Initial cross-entropy efficiency: {self.efficiency()}")
@@ -97,8 +103,8 @@ class WindFarm:
                 last_nbest_efficiencies = np.zeros(n_best)
                 last_nbest_x = np.zeros(n_best)
                 last_nbest_y = np.zeros(n_best)
-                # Initialize all values to current efficiency
 
+                # Initialize all values to current efficiency
                 current_efficiency = self.efficiency()
                 last_nbest_efficiencies.fill(current_efficiency)
                 last_nbest_x.fill(self.turbines[i].x)
@@ -120,21 +126,21 @@ class WindFarm:
                         # Check if the point is within constraints
                         if self.check_constraints(pointx, pointy):
                             # Update the location of the turbine
-                            self.turbines[i].update_location(pointx, pointy, True)
+                            self.turbines[i].update_temp_location(pointx, pointy)
 
                             # Update all the turbines
                             # O(N) complexity
                             for k in range(self.n_turbines):
                                 # Update the efficiency of the other turbines realitive to this turbine
-                                self.turbines[k].update_distance(self.turbines[i], True)
+                                self.turbines[k].update_temp_distance(self.turbines[i])
                                 # Update the efficiency of this turbine
-                                self.turbines[i].update_distance(self.turbines[k], True)
+                                self.turbines[i].update_temp_distance(self.turbines[k])
                             
                             # Check if the current efficiency is better than the n_best
-                            new_efficiency = self.efficiency()
+                            new_efficiency = self.temp_efficiency()
                             for f in range(n_best):
                                 if new_efficiency > new_nbest_efficiencies[f]:
-                                    print("found improvement")
+                                    #print("found improvement")
                                     new_nbest_efficiencies[f] = new_efficiency
                                     new_nbest_x[f] = pointx
                                     new_nbest_y[f] = pointy
@@ -142,23 +148,21 @@ class WindFarm:
                             
                             # Revert the location of the turbines
                             for k in range(self.n_turbines):
-                                self.turbines[k].revert_state()
+                                self.turbines[k].reset_temp_distances()
                     # Update the last n_best
                     last_nbest_efficiencies = new_nbest_efficiencies
                     last_nbest_x = new_nbest_x
                     last_nbest_y = new_nbest_y
                     best_index = np.argmax(new_nbest_efficiencies)
-                    self.turbines[i].update_location(new_nbest_x[best_index], new_nbest_y[best_index], False)
+                    self.turbines[i].update_location(new_nbest_x[best_index], new_nbest_y[best_index])
                     self.update_all_distances()
 
                     # Update the sigma
-                    sigma2 = sigma2 * .5
-                    #print(self.efficiency())
+                    sigma2 = sigma2 * .9
                 # Reset sigma
-                print(self.efficiency())
                 sigma2 = sigma1
             # Update the overall sigma
-            sigma1 = sigma1 * .5
+            sigma1 = sigma1 * .7
         print(f"Final cross-entropy efficiency: {self.efficiency()}")
                 
                 
@@ -189,55 +193,56 @@ class Turbine:
         self.location = location
         self.x = location[0]
         self.y = location[1]
+        self.temp_location = location
         self.i = i
-        self.distances = np.zeros(n_turbines)
-        self.min_distance = np.inf
-        self.min_distance_index = None
-        self.last_min_distance = np.inf
-        self.last_min_distance_index = None
-        self.distances[i] = np.inf
-        self.last_x = location[0]
-        self.last_y = location[1]
-        self.perturbed = False
+        self.actual_distances = np.zeros(n_turbines)
+        self.actual_min_distance = np.inf
+        self.actual_min_distance_index = None
+        self.temp_distances = np.zeros(n_turbines)
+        self.temp_min_distance = np.inf
+        self.temp_min_distance_index = None
+        self.actual_distances[i] = np.inf
+        self.temp_distances[i] = np.inf
     
-    def update_location(self, x, y, perturbed):
+    def update_location(self, x, y):
         self.x = x
         self.y = y
         self.location = np.array([x, y])
-        if perturbed:
-            self.last_x = x
-            self.last_y = y
-            self.perturbed = True
+        self.temp_location = np.array([x, y])
     
-    # Update the distance to a specific turbine
-    def update_distance(self, turbine, perturbed):
-        if not turbine.i == self.i:
-            # Update the distance to the turbine
-            new_distance = np.linalg.norm(self.location - turbine.location)
-            self.distances[turbine.i] = new_distance
-            # Case where the new distance is larger than the current minimum distance
-            if((self.min_distance_index == turbine.i) and (new_distance > self.min_distance)):
-                new_min_index = np.argmin(self.distances)
-                self.last_min_distance = self.min_distance
-                self.last_min_distance_index = self.min_distance_index
-                self.min_distance = self.distances[new_min_index]
-                self.min_distance_index = new_min_index
-                self.perturbed = perturbed
-            # Case where the new distance is smaller than the current minimum distance
-            elif (new_distance < self.min_distance):
-                self.last_min_distance = self.min_distance
-                self.last_min_distance_index = self.min_distance_index
-                self.min_distance = new_distance
-                self.min_distance_index = turbine.i
-                self.perturbed = perturbed
+    def update_temp_location(self, x, y):
+        self.temp_location = np.array([x, y])
 
-    def revert_state(self):
-        if self.perturbed:
-            self.min_distance = self.last_min_distance
-            self.min_distance_index = self.last_min_distance_index
-            self.x = self.last_x
-            self.y = self.last_y
-            self.perturbed = False
+    # Update the distance to a specific turbine
+    def update_actual_distance(self, turbine):
+        if not turbine.i == self.i:
+            new_distance = np.linalg.norm(self.location - turbine.location)
+            self.actual_distances[turbine.i] = new_distance
+            min_index = np.argmin(self.actual_distances)
+            #TODO: If the fast way actually works from temp, then use it here
+            self.actual_min_distance = self.actual_distances[min_index]
+            self.actual_min_distance_index = min_index
+    
+    def reset_temp_distances(self):
+        self.temp_distances = self.actual_distances.copy()
+        self.temp_min_distance = self.actual_min_distance
+        self.temp_min_distance_index = self.actual_min_distance_index
+        self.temp_location = self.location
+
+    # Temporary update the distance to a specific turbine
+    def update_temp_distance(self, turbine):
+        if not turbine.i == self.i:
+            new_distance = np.linalg.norm(self.temp_location - turbine.location)
+            self.temp_distances[turbine.i] = new_distance
+            # Case where the new distance is larger than the current minimum distance
+            if (self.temp_min_distance_index == turbine.i) and (new_distance > self.temp_min_distance):
+                new_min_index = np.argmin(self.temp_distances)
+                self.temp_min_distance = self.temp_distances[new_min_index]
+                self.temp_min_distance_index = new_min_index
+            # Case where the new distance is smaller than the current minimum distance
+            elif (new_distance < self.temp_min_distance):
+                self.temp_min_distance = new_distance
+                self.temp_min_distance_index = turbine.i
     
     # Returns the distance to the closest turbine and its index
     def return_min_distance(self):
@@ -246,8 +251,11 @@ class Turbine:
     # Returns the efficiency of the turbine
     def efficiency(self):
         # Avoid division by zero
-        return 1 / (1 + (1/(self.min_distance + epsilon)))
+        return 1 / (1 + (1/(self.actual_min_distance + epsilon)))
     
+    def temp_efficiency(self):
+        # Avoid division by zero
+        return 1 / (1 + (1/(self.temp_min_distance + epsilon)))
         
     
     
