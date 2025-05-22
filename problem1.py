@@ -1,6 +1,8 @@
 import numpy as np
 from windfarm import WindFarm, Turbine
 
+np.random.seed(0)
+
 def optimize(n_turbines, n_iterations):
     raise NotImplementedError("Not implemented")
 
@@ -26,9 +28,9 @@ def optimize_3():
     print(f"Brute force wind farm efficiency: {best_efficiency}")
 
     # Cross-entropy optimize the turbines
-    n_iterations = 5 # How many times it runs cross-entropy on each point
-    samples = 100 # How many points it samples
-    cycles = 10 # How many times it will cycle through all of the points
+    n_iterations = 1 # How many times it runs cross-entropy on each point
+    samples = 3 # How many points it samples
+    cycles = 2 # How many times it will cycle through all of the points
     windfarm.cross_entropy_optimize(n_iterations, samples, cycles)
 
     return windfarm
