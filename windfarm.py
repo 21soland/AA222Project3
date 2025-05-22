@@ -56,6 +56,16 @@ class WindFarm:
 
             # Add the turbine to the list
             self.turbines.append(Turbine(np.array([x,y]), self.n_turbines, n))
+
+    def random_redistribute(self):
+        self.turbines = []
+        for i in range(self.n_turbines):
+            x = np.random.random() * 10
+            y = np.random.random() * 10
+            while not self.check_constraints(x,y):
+                x = np.random.random() * 10
+                y = np.random.random() * 10
+            self.turbines.append(Turbine(np.array([x,y]), self.n_turbines, i))
     
     # Check if a point lies within the constraints
     def check_constraints(self, x,y):

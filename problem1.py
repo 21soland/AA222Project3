@@ -1,5 +1,6 @@
 import numpy as np
 from windfarm import WindFarm, Turbine
+import time
 
 #np.random.seed(0)
 
@@ -13,11 +14,12 @@ def optimize(n_turbines):
     best_efficiency = windfarm.efficiency()
     print(f"Initial wind farm efficiency: {best_efficiency}")
     best_configuration = windfarm.turbines
-    brute_force_iterations = 2
+    brute_force_iterations = 10000
     # Brute force the best configuration
     for _ in range(brute_force_iterations):
         # Redistribute the turbines
         windfarm.redistribute()
+        #windfarm.random_redistribute()
         # Update the distances
         windfarm.update_all_distances()
         # Check if the efficiency is better
@@ -32,13 +34,20 @@ def optimize(n_turbines):
     samples = 1000 # How many points it samples
     cycles = 10 # How many times it will cycle through all of the points
     windfarm.cross_entropy_optimize(n_iterations, samples, cycles)
-
-    return windfarm
+    #windfarm.plot()
+    return windfarm.efficiency()
 
 def main():
-    n_turbines = 9
-    windfarm = optimize(n_turbines)
-    windfarm.plot()
+    start_time = time.time()
+    for i in range(2,10):
+        efficiency = optimize(i)
+        # Write results to CSV file
+        with open('results.csv', 'a') as f:
+            f.write(f"{i},{efficiency}\n")
+        print(f"Wind farm efficiency for {i} turbines: {efficiency}")
+    end_time = time.time()
+    print(f"Time taken: {end_time - start_time} seconds")
+
 
 if __name__ == "__main__":
     main()
