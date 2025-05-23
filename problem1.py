@@ -26,7 +26,7 @@ def optimize(n_turbines):
     windfarm = WindFarm(n_turbines)
     best_efficiency = windfarm.efficiency()
     best_dist_std = windfarm.dist_std()
-    print(f"Initial wind farm efficiency: {best_efficiency}")
+    print(f"\nInitial wind farm efficiency: {best_efficiency}\n")
     best_configuration = windfarm.turbines
     
     # Brute force optimization parameters
@@ -41,7 +41,7 @@ def optimize(n_turbines):
         # Quick optimization pass
         windfarm.cross_entropy_optimize(
             n_iterations=2,
-            samples=3,
+            samples=10,
             cycles=3,
             decay1=0.5,
             decay2=0.25,
@@ -62,16 +62,18 @@ def optimize(n_turbines):
     
     # Set the best configuration found
     windfarm.set_turbines(best_configuration)
-    print(f"Brute force wind farm efficiency: {best_efficiency}")
+    print(f"\nBrute force wind farm efficiency: {best_efficiency}")
+    print(f"Average minimum distance: {best_dist_std}")
+    print(f"Error: {abs(best_efficiency - ANSWERS[n_turbines-2])}\n")
 
     # Final detailed optimization
     windfarm.cross_entropy_optimize(
         n_iterations=5,      # Number of iterations per point
         samples=2000,        # Number of sample points
-        cycles=25,           # Number of optimization cycles
-        decay1=0.9,          # Cycle decay rate
-        decay2=0.8,          # Point decay rate
-        random_prob=0.25,    # Probability of random movement
+        cycles=15,           # Number of optimization cycles
+        decay1=0.85,          # Cycle decay rate
+        decay2=0.7,          # Point decay rate
+        random_prob=0.25,    # Probability of random rotation/expansion
         verbose=True
     )
     windfarm.update_all_distances()
@@ -112,11 +114,21 @@ def temp():
     """
     Temporary function for testing optimization with 8 turbines.
     """
-    n_turbines = 8
-    efficiency, average_min_distance = optimize(n_turbines)
-    
-    print(f"Average minimum distance: {average_min_distance}")
-    error = abs(average_min_distance - ANSWERS[n_turbines-2])
+    best = 0
+    for i in range(5):
+        print(f"\nIteration {i}")
+        n_turbines = 6
+        efficiency, average_min_distance = optimize(n_turbines)
+        
+        print(f"\nAverage minimum distance: {average_min_distance}")
+        print(f"Efficiency: {efficiency}")
+        print(f"Error: {abs(average_min_distance - ANSWERS[n_turbines-2])}")
+        if average_min_distance > best:
+            best = average_min_distance
+            print(f"New best: {best}")
+
+    print(f"Overall Best Average minimum distance: {best}")
+    error = abs(best - ANSWERS[n_turbines-2])
     print(f"Error for {n_turbines} turbines: {error}")
 
 
