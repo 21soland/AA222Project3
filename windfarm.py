@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from turbine import Turbine
 
 # Small constant to avoid division by zero
 EPSILON = 1e-6
@@ -176,15 +177,15 @@ class WindFarm:
 
             # Check if the new position is valid
             if self.check_constraints(new_x, new_y):
-                turbine.update_location(new_x, new_y)
+                turbine.update_temp_location(new_x, new_y)
             else:
                 # If not, then see if just the x or y is valid
                 x_in = self.check_constraints(new_x, turbine.y)
                 y_in = self.check_constraints(turbine.x, new_y)
                 if x_in:
-                    turbine.update_location(new_x, new_y)
+                    turbine.update_temp_location(new_x, new_y)
                 elif y_in:
-                    turbine.update_location(turbine.x, new_y)
+                    turbine.update_temp_location(turbine.x, new_y)
         self.update_all_distances()
 
     def random_move_rotate(self):
@@ -227,17 +228,16 @@ class WindFarm:
 
             # Check if the new position is valid
             if self.check_constraints(new_x, new_y):
-                turbine.update_location(new_x, new_y)
+                turbine.update_temp_location(new_x, new_y)
             
             # If not, then see if just the x or y is valid
             else:
                 x_in = self.check_constraints(new_x, turbine.y)
                 y_in = self.check_constraints(turbine.x, new_y)
                 if x_in:
-                    turbine.update_location(new_x, new_y)
+                    turbine.update_temp_location(new_x, new_y)
                 elif y_in:
-                    turbine.update_location(turbine.x, new_y)
-        self.update_all_distances()
+                    turbine.update_temp_location(turbine.x, new_y)
 
     def reset_sigma1(self):
         """Reset the primary sigma value to initial state."""
@@ -247,6 +247,22 @@ class WindFarm:
         """Reset all temporary distances to actual distances."""
         for turbine in self.turbines:
             turbine.reset_temp_distances()
+    
+    def dist_std_temp(self):
+        """Calculate standard deviation of temporary distances."""
+        average = self.average_min_distance_temp()
+        std = sum((turbine.temp_min_distance - average)**2 for turbine in self.turbines)
+        return np.sqrt(std / self.n_turbines)
+    
+    def quick_update_turbines(self, turbine_index, new_x, new_y):
+        # Try the temporary new position
+        self.turbines[turbine_index].update_location(new_x, new_y)
+
+        # Update the temporary distances
+        for k in range(self.n_turbines):
+            self.turbines[k].update_temp_distance(self.turbines[turbine_index])
+            self.turbines[turbine_index].update_temp_distance(self.turbines[k])
+
     
     def cross_entropy_optimize(self, n_iterations, samples, cycles, decay1, decay2, random_prob, verbose):
         """
@@ -274,48 +290,51 @@ class WindFarm:
             if verbose:
                 print(f"\nCycle {cycle} of {cycles}: Current efficiency: {self.efficiency()}")
 
-            # Randomly expand the turbines outwards or rotate them
-            # Set sigma1 so we can rotate back if we need to
-            if np.random.random() < random_prob:
-                sigma1 = self.random_move_rotate()
-                if verbose:
-                    print(f"Rotating")
-
+            
+            # Update the distances
+            self.update_all_distances()
 
             # For each turbine  
             for i in range(self.n_turbines):
-                # Initialize arrays to track best average distances
-                last_nbest_avg_distances = np.zeros(n_best)
-                new_nbest_avg_distances = np.zeros(n_best)
+                # Reset sigma for next turbine
+                sigma2 = sigma1
+
+                # Scale sigma based on turbine's deviation from mean
+                factor = 1
+                if cycle > 5:  # Start scaling earlier
+                    deviation = self.turbines[i].diff_from_mean(self.average_min_distance(), self.dist_std())
+                    sigma2 = sigma2 * deviation * factor
+                    # Cap sigma2 to prevent overflow but allow reasonable exploration
+                    sigma2 = min(max(sigma2, 0.1), 5.0)
                 
-                # Set initial values
-                current_avg_distance = self.average_min_distance()
-                last_nbest_avg_distances.fill(current_avg_distance)
-                new_nbest_avg_distances = last_nbest_avg_distances.copy()
+                if verbose and cycle == 10:
+                    print(f"Sigma2: {sigma2}")
 
                 # Initialize best points tracking
                 last_nbest_efficiencies = np.zeros(n_best)
+                last_nbest_stds = np.zeros(n_best)
                 last_nbest_x = np.zeros(n_best)
                 last_nbest_y = np.zeros(n_best)
 
-                last_nbest_avg_distances.fill(current_avg_distance)
-                last_nbest_avg_distances_x = last_nbest_avg_distances.copy()
-                last_nbest_avg_distances_y = last_nbest_avg_distances.copy()
-
-
                 # Set initial values
-                self.update_all_distances()
                 self.reset_temp_distances()
-                current_efficiency = self.efficiency()
-                last_nbest_efficiencies.fill(current_efficiency)
-                last_nbest_x.fill(self.turbines[i].x)
-                last_nbest_y.fill(self.turbines[i].y)
+                self.update_all_distances()
+                
+                # On the first cycle just use the current position
+                if cycle == 0:
+                    current_efficiency = self.efficiency()
+                    current_std = self.dist_std()
+                    last_nbest_efficiencies.fill(current_efficiency)
+                    last_nbest_stds.fill(current_std)
+                    last_nbest_x.fill(self.turbines[i].x)
+                    last_nbest_y.fill(self.turbines[i].y)
+                else:
+                    last_nbest_efficiencies, last_nbest_stds, last_nbest_x, last_nbest_y = self.turbines[i].get_n_best_last()
 
                 new_nbest_efficiencies = last_nbest_efficiencies.copy()
+                new_nbest_stds = last_nbest_stds.copy()
                 new_nbest_x = last_nbest_x.copy()
                 new_nbest_y = last_nbest_y.copy()
-                new_nbest_avg_distances_x = last_nbest_avg_distances.copy()
-                new_nbest_avg_distances_y = last_nbest_avg_distances.copy()
 
                 for q in range(n_iterations):
                     # Generate sample points
@@ -323,14 +342,28 @@ class WindFarm:
                     y_samples = np.random.normal(0, sigma2, samples)
 
                     for j in range(samples):
-
                         # Generate a random point within the constraints
                         pointx = x_samples[j] + last_nbest_x[j % n_best]
                         pointy = y_samples[j] + last_nbest_y[j % n_best]
-                        while not self.check_constraints(pointx, pointy):
-                            pointx = np.random.random() * 10
-                            pointy = np.random.random() * 10
-                    
+                        
+                        # If point is invalid, try with increasing sigma
+                        max_attempts = 3  # Reduced from 5 to be more aggressive
+                        attempt = 0
+                        while not self.check_constraints(pointx, pointy) and attempt < max_attempts:
+                            # Increase sigma for each attempt
+                            attempt_sigma = sigma2 * (2.0 ** attempt)  # More aggressive increase
+                            pointx = np.random.normal(last_nbest_x[j % n_best], attempt_sigma)
+                            pointy = np.random.normal(last_nbest_y[j % n_best], attempt_sigma)
+                            attempt += 1
+                        
+                        # If still invalid, use a random point but keep it close to the best point
+                        if not self.check_constraints(pointx, pointy):
+                            pointx = last_nbest_x[j % n_best] + np.random.normal(0, sigma2 * 2)
+                            pointy = last_nbest_y[j % n_best] + np.random.normal(0, sigma2 * 2)
+                            while not self.check_constraints(pointx, pointy):
+                                pointx = last_nbest_x[j % n_best] + np.random.normal(0, sigma2 * 2)
+                                pointy = last_nbest_y[j % n_best] + np.random.normal(0, sigma2 * 2)
+                        
                         # Try the temporary new position
                         self.turbines[i].update_temp_location(pointx, pointy)
 
@@ -341,15 +374,16 @@ class WindFarm:
                         
                         # Check if the temporary new position is better than the best points
                         new_efficiency = self.temp_efficiency()
-                        new_avg_distance = self.average_min_distance_temp()
+                        new_std = self.dist_std_temp()
 
                         # If so add it to the n best points
-                        worst_index = np.argmin(new_nbest_efficiencies)
-                        if(new_efficiency > new_nbest_efficiencies[worst_index]):
-                            new_nbest_efficiencies[worst_index] = new_efficiency
-                            new_nbest_avg_distances[worst_index] = new_avg_distance
-                            new_nbest_x[worst_index] = pointx
-                            new_nbest_y[worst_index] = pointy
+                        for j in range(n_best):
+                            if (new_efficiency > new_nbest_efficiencies[j]):
+                                new_nbest_efficiencies[j] = new_efficiency
+                                new_nbest_stds[j] = new_std
+                                new_nbest_x[j] = pointx
+                                new_nbest_y[j] = pointy
+                                break
                         
                         # Reset the temporary distances
                         self.reset_temp_distances()
@@ -359,20 +393,17 @@ class WindFarm:
                     last_nbest_x = new_nbest_x
                     last_nbest_y = new_nbest_y
 
-                    if(np.random.random() < 0.9):
-                        best_index = np.argmax(new_nbest_efficiencies)
-                        self.turbines[i].update_location(new_nbest_x[best_index], new_nbest_y[best_index])
-                    else:
-                        best_index = np.argmax(new_nbest_avg_distances)
-                        self.turbines[i].update_location(new_nbest_avg_distances_x[best_index], new_nbest_avg_distances_y[best_index])
-                    self.update_all_distances()
+                    best_index = np.argmax(new_nbest_efficiencies)
+                    self.turbines[i].update_location(new_nbest_x[best_index], new_nbest_y[best_index])
+
+                    # Save the best points
+                    self.turbines[i].set_n_best_last(new_nbest_efficiencies, new_nbest_stds, new_nbest_x, new_nbest_y)
+
+                    # TODO: See if we can just get away with the quick update
+                    #self.quick_update_turbines(i, new_nbest_x[best_index], new_nbest_y[best_index])
 
                     # Update sigma
                     sigma2 = sigma2 * decay2
-
-                # Reset sigma for next turbine
-                sigma2 = sigma1
-
             # Update the overall cycle sigma
             # TODO: switched this so that it decays faster with the random rotate/expand
             #if np.random.random() < 0.7:
@@ -443,122 +474,3 @@ class WindFarm:
     def __del__(self):
         """Clean up plot resources."""
         plt.close()
-
-
-class Turbine:
-    """
-    Class representing a single wind turbine.
-    Handles position and distance calculations.
-    """
-    def __init__(self, location, n_turbines, i):
-        """
-        Initialize a turbine.
-        
-        Args:
-            location (np.array): Initial position [x, y]
-            n_turbines (int): Total number of turbines
-            i (int): Index of this turbine
-        """
-        self.location = location
-        self.x = location[0]
-        self.y = location[1]
-        self.temp_location = location
-        self.i = i
-        
-        # Initialize distance arrays
-        self.actual_distances = np.zeros(n_turbines)
-        self.temp_distances = np.zeros(n_turbines)
-        self.actual_distances[i] = np.inf
-        self.temp_distances[i] = np.inf
-        
-        # Initialize minimum distance tracking
-        self.actual_min_distance = np.inf
-        self.actual_min_distance_index = None
-        self.temp_min_distance = np.inf
-        self.temp_min_distance_index = None
-    
-    def update_location(self, x, y):
-        """
-        Update both actual and temporary locations.
-        
-        Args:
-            x (float): New x-coordinate
-            y (float): New y-coordinate
-        """
-        self.x = x
-        self.y = y
-        self.location = np.array([x, y])
-        self.temp_location = np.array([x, y])
-    
-    def update_temp_location(self, x, y):
-        """
-        Update only temporary location.
-        
-        Args:
-            x (float): New x-coordinate
-            y (float): New y-coordinate
-        """
-        self.temp_location = np.array([x, y])
-
-    def update_actual_distance(self, turbine):
-        """
-        Update actual distance to another turbine.
-        
-        Args:
-            turbine (Turbine): Other turbine to measure distance to
-        """
-        if not turbine.i == self.i:
-            new_distance = np.linalg.norm(self.location - turbine.location)
-            self.actual_distances[turbine.i] = new_distance
-            min_index = np.argmin(self.actual_distances)
-            self.actual_min_distance = self.actual_distances[min_index]
-            self.actual_min_distance_index = min_index
-    
-    def reset_temp_distances(self):
-        """Reset temporary distances to match actual distances."""
-        self.temp_distances = self.actual_distances.copy()
-        self.temp_min_distance = self.actual_min_distance
-        self.temp_min_distance_index = self.actual_min_distance_index
-        self.temp_location = self.location
-
-    def update_temp_distance(self, turbine):
-        """
-        Update temporary distance to another turbine.
-        
-        Args:
-            turbine (Turbine): Other turbine to measure distance to
-        """
-        if not turbine.i == self.i:
-            new_distance = np.linalg.norm(self.temp_location - turbine.location)
-            self.temp_distances[turbine.i] = new_distance
-            
-            # Update minimum distance if needed
-            if (self.temp_min_distance_index == turbine.i) and (new_distance > self.temp_min_distance):
-                new_min_index = np.argmin(self.temp_distances)
-                self.temp_min_distance = self.temp_distances[new_min_index]
-                self.temp_min_distance_index = new_min_index
-            elif new_distance < self.temp_min_distance:
-                self.temp_min_distance = new_distance
-                self.temp_min_distance_index = turbine.i
-    
-    def efficiency(self):
-        """
-        Calculate turbine efficiency based on minimum distance.
-        
-        Returns:
-            float: Turbine efficiency
-        """
-        return 1 / (1 + (1/(self.actual_min_distance + EPSILON)))
-    
-    def temp_efficiency(self):
-        """
-        Calculate temporary turbine efficiency.
-        
-        Returns:
-            float: Temporary turbine efficiency
-        """
-        return 1 / (1 + (1/(self.temp_min_distance + EPSILON)))
-        
-    
-    
-
