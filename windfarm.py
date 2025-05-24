@@ -262,6 +262,17 @@ class WindFarm:
         for k in range(self.n_turbines):
             self.turbines[k].update_temp_distance(self.turbines[turbine_index])
             self.turbines[turbine_index].update_temp_distance(self.turbines[k])
+    
+    def worst_turbine_deviation(self):
+        """
+        Calculate the deviation of the worst turbine from the mean.
+        """
+        max_deviation = 0
+        for turbine in self.turbines:
+            deviation = turbine.diff_from_mean(self.average_min_distance(), self.dist_std())
+            if deviation > max_deviation:
+                max_deviation = deviation
+        return max_deviation
 
     
     def cross_entropy_optimize(self, n_iterations, samples, cycles, decay1, decay2, random_prob, verbose):
@@ -293,22 +304,18 @@ class WindFarm:
             
             # Update the distances
             self.update_all_distances()
-
             # For each turbine  
             for i in range(self.n_turbines):
                 # Reset sigma for next turbine
                 sigma2 = sigma1
 
-                # Scale sigma based on turbine's deviation from mean
+                """# Scale sigma based on turbine's deviation from mean
                 factor = 1
-                if cycle > 5:  # Start scaling earlier
+                if cycle > 2:  # Start scaling earlier
                     deviation = self.turbines[i].diff_from_mean(self.average_min_distance(), self.dist_std())
                     sigma2 = sigma2 * deviation * factor
                     # Cap sigma2 to prevent overflow but allow reasonable exploration
-                    sigma2 = min(max(sigma2, 0.1), 5.0)
-                
-                if verbose and cycle == 10:
-                    print(f"Sigma2: {sigma2}")
+                    sigma2 = min(max(sigma2, 0.1), 5.0)"""
 
                 # Initialize best points tracking
                 last_nbest_efficiencies = np.zeros(n_best)
@@ -407,7 +414,18 @@ class WindFarm:
             # Update the overall cycle sigma
             # TODO: switched this so that it decays faster with the random rotate/expand
             #if np.random.random() < 0.7:
-            sigma1 = sigma1 * decay1
+            self.update_all_distances()
+            worst_deviation = self.worst_turbine_deviation()
+            if verbose:
+                print(f"Worst deviation: {worst_deviation}")
+                for turbine in self.turbines:
+                    print(f"Turbine {turbine.i} has a minimum distance of {turbine.actual_min_distance}")
+            if worst_deviation < 1.1:
+                sigma1 = sigma1 * decay1 * 3
+            elif worst_deviation < 2.5:
+                sigma1 = sigma1 * decay1
+            else:
+                sigma1 = sigma1
 
             if verbose:
                 print(f"Sigma1: {sigma1}")

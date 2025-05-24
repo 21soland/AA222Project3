@@ -49,39 +49,40 @@ def optimize(n_turbines):
             verbose=False
         )
         
-        """# Update best configuration if current is better
+        # Update best configuration if current is better
         cur_std = windfarm.dist_std()
         if cur_std < best_dist_std:
             best_dist_std = cur_std
-            best_configuration = windfarm.turbines"""
+            best_configuration = windfarm.turbines
         
-        # Update best efficiency if current is better
+        """# Update best efficiency if current is better
         cur_efficiency = windfarm.efficiency()
         if cur_efficiency > best_efficiency:
             best_efficiency = cur_efficiency
-            best_configuration = windfarm.turbines
+            best_configuration = windfarm.turbines"""
+        
             
         # Progress reporting
         if iteration % 100 == 0:
             print(f"Brute force iteration {iteration} of {brute_force_iterations}, "
-                  f"best dist std: {best_dist_std}")
+                  f"best efficiency: {best_dist_std}")
         
         # Reset sigma
         windfarm.reset_sigma1()
     
     # Set the best configuration found
     windfarm.set_turbines(best_configuration)
-    print(f"\nBrute force wind farm efficiency: {best_efficiency}")
+    print(f"\nBrute force wind farm efficiency: {best_dist_std}")
     print(f"Average minimum distance: {best_dist_std}")
-    print(f"Error: {abs(best_efficiency - ANSWERS[n_turbines-2])}\n")
+    print(f"Error: {abs(best_dist_std - ANSWERS[n_turbines-2])}\n")
 
     # Final detailed optimization
     windfarm.reset_sigma1()
     windfarm.cross_entropy_optimize(
         n_iterations=5,      # Number of iterations per point
-        samples=2000,        # Number of sample points
-        cycles=20,           # Number of optimization cycles
-        decay1=0.88,          # Cycle decay rate
+        samples=500,        # Number of sample points
+        cycles=12,           # Number of optimization cycles
+        decay1=0.7,          # Cycle decay rate
         decay2=0.5,          # Point decay rate
         random_prob=0.25,    # Probability of random rotation/expansion
         verbose=True
@@ -125,7 +126,7 @@ def temp():
     Temporary function for testing optimization with 8 turbines.
     """
     best = 0
-    for i in range(5):
+    for i in range(12):
         print(f"\nIteration {i}")
         n_turbines = 8
         efficiency, average_min_distance = optimize(n_turbines)
