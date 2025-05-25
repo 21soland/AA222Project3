@@ -28,6 +28,7 @@ gp.fit(min_seperation.reshape(-1, 1), measured_efficiency.reshape(-1, 1))
 
 x = np.linspace(0, 16, 100)
 mean_residual, sigmas = gp.predict(x.reshape(-1, 1), return_std=True)
+x_new = np.linspace(2, 16, 9)
 confidence_interval = (1.96 * sigmas)
 upper = mean_residual + confidence_interval
 lower = mean_residual - confidence_interval
@@ -37,7 +38,7 @@ lower = mean_residual - confidence_interval
 plt.plot(X, Y, color='red', linestyle='dashed', label='Ideal data')
 
 plt.scatter(og_min_seperation, og_measured_efficiency, label='GP mean')
-plt.plot(x, final_efficiency, label='GP mean')
+plt.plot(x, mean_residual, label='GP mean')
 plt.fill_between(
     x,
     upper,
