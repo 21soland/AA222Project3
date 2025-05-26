@@ -226,7 +226,7 @@ class WindFarm:
             verbose (bool): Whether to print progress
         """
         n_best = 5
-        sigma1 = 3
+        sigma1 = 3.0  # Increased initial sigma for better exploration
         sigma2 = sigma1
 
         if verbose:
@@ -238,21 +238,21 @@ class WindFarm:
             if verbose:
                 print(f"\nCycle {cycle} of {cycles}: Current efficiency: {self.efficiency()}")
 
-            
-            # Update the distances
+            # Update the distances once per cycle
             self.update_all_distances()
+            
             # For each turbine  
             for i in range(self.n_turbines):
                 # Reset sigma for next turbine
                 sigma2 = sigma1
 
-                """# Scale sigma based on turbine's deviation from mean
-                factor = 1
-                if cycle > 2:  # Start scaling earlier
-                    deviation = self.turbines[i].diff_from_mean(self.average_min_distance(), self.dist_std())
-                    sigma2 = sigma2 * deviation * factor
+                # Scale sigma based on turbine's deviation from mean
+                factor = 1.0
+                if cycle > 0:  # Start scaling from first cycle
+                    deviation = self.turbines[i].diff_from_mean(self.average_min_distance())
+                    sigma2 = sigma2 * (1 + deviation * factor)
                     # Cap sigma2 to prevent overflow but allow reasonable exploration
-                    sigma2 = min(max(sigma2, 0.1), 5.0)"""
+                    sigma2 = min(max(sigma2, 1e-3), 2.0)
 
                 # Initialize best points tracking
                 last_nbest_efficiencies = np.zeros(n_best)
@@ -262,9 +262,6 @@ class WindFarm:
 
                 # Set initial values
                 self.reset_temp_distances()
-                self.update_all_distances()
-                
-                
                 current_efficiency = self.efficiency()
                 current_std = self.dist_std(self.turbines[i])
                 last_nbest_efficiencies.fill(current_efficiency)
@@ -278,9 +275,14 @@ class WindFarm:
                 new_nbest_y = last_nbest_y.copy()
 
                 for q in range(n_iterations):
-                    # Generate sample points
+                    # Generate sample points with increased diversity
                     x_samples = np.random.normal(0, sigma2, samples)
                     y_samples = np.random.normal(0, sigma2, samples)
+                    
+                    """# Add some random samples for better exploration
+                    if np.random.random() < random_prob:
+                        x_samples[:samples//4] = np.random.uniform(-sigma2*2, sigma2*2, samples//4)
+                        y_samples[:samples//4] = np.random.uniform(-sigma2*2, sigma2*2, samples//4)"""
 
                     for j in range(samples):
                         # Generate a random point within the constraints
@@ -288,22 +290,22 @@ class WindFarm:
                         pointy = y_samples[j] + last_nbest_y[j % n_best]
                         
                         # If point is invalid, try with increasing sigma
-                        max_attempts = 3  # Reduced from 5 to be more aggressive
+                        max_attempts = 3
                         attempt = 0
                         while not self.check_constraints(pointx, pointy) and attempt < max_attempts:
                             # Increase sigma for each attempt
-                            attempt_sigma = sigma2 * (2.0 ** attempt)  # More aggressive increase
+                            attempt_sigma = sigma2 * (1.5 ** attempt)  # More gradual increase
                             pointx = np.random.normal(last_nbest_x[j % n_best], attempt_sigma)
                             pointy = np.random.normal(last_nbest_y[j % n_best], attempt_sigma)
                             attempt += 1
                         
                         # If still invalid, use a random point but keep it close to the best point
                         if not self.check_constraints(pointx, pointy):
-                            pointx = last_nbest_x[j % n_best] + np.random.normal(0, sigma2 * 2)
-                            pointy = last_nbest_y[j % n_best] + np.random.normal(0, sigma2 * 2)
+                            pointx = last_nbest_x[j % n_best] + np.random.normal(0, sigma2)
+                            pointy = last_nbest_y[j % n_best] + np.random.normal(0, sigma2)
                             while not self.check_constraints(pointx, pointy):
-                                pointx = last_nbest_x[j % n_best] + np.random.normal(0, sigma2 * 2)
-                                pointy = last_nbest_y[j % n_best] + np.random.normal(0, sigma2 * 2)
+                                pointx = last_nbest_x[j % n_best] + np.random.normal(0, sigma2)
+                                pointy = last_nbest_y[j % n_best] + np.random.normal(0, sigma2)
                         
                         # Try the temporary new position
                         self.turbines[i].update_temp_location(pointx, pointy)
@@ -318,12 +320,19 @@ class WindFarm:
                         new_std = self.dist_std_temp(self.turbines[i])
 
                         # If so add it to the n best points
-                        for j in range(n_best):
-                            if ((new_efficiency > new_nbest_efficiencies[j]) and (new_std < new_nbest_stds[j])):
-                                new_nbest_efficiencies[j] = new_efficiency
-                                new_nbest_stds[j] = new_std
-                                new_nbest_x[j] = pointx
-                                new_nbest_y[j] = pointy
+                        for k in range(n_best):
+                            if new_efficiency > new_nbest_efficiencies[k]:
+                                # Shift existing points
+                                new_nbest_efficiencies[k+1:] = new_nbest_efficiencies[k:-1]
+                                new_nbest_stds[k+1:] = new_nbest_stds[k:-1]
+                                new_nbest_x[k+1:] = new_nbest_x[k:-1]
+                                new_nbest_y[k+1:] = new_nbest_y[k:-1]
+                                
+                                # Insert new point
+                                new_nbest_efficiencies[k] = new_efficiency
+                                new_nbest_stds[k] = new_std
+                                new_nbest_x[k] = pointx
+                                new_nbest_y[k] = pointy
                                 break
                         
                         # Reset the temporary distances
@@ -334,31 +343,21 @@ class WindFarm:
                     last_nbest_stds = new_nbest_stds
                     last_nbest_x = new_nbest_x
                     last_nbest_y = new_nbest_y
-
-                    best_index = np.argmax(new_nbest_efficiencies)
-
-                    self.turbines[i].update_location(new_nbest_x[best_index], new_nbest_y[best_index])
+                    
+                    self.turbines[i].update_location(last_nbest_x[0], last_nbest_y[0])
                     self.update_all_distances()
-
-                    # Save the best points
-                    self.turbines[i].set_n_best_last(new_nbest_efficiencies, new_nbest_stds, new_nbest_x, new_nbest_y)
-                    # TODO: See if we can just get away with the quick update
-                    #self.quick_update_turbines(i, new_nbest_x[best_index], new_nbest_y[best_index])
 
                     # Update sigma
                     sigma2 = sigma2 * decay2
 
             # Update the overall cycle sigma
-            self.update_all_distances()
             sigma1 = sigma1 * decay1
-
 
             if verbose:
                 print(f"Sigma1: {sigma1}")
                 self.print_avg_deviation()
                 self.print_cur_error()
                 
-            
             if self.early_stop():
                 if verbose:
                     print("Early stopping")
@@ -370,40 +369,66 @@ class WindFarm:
             print(f"Final cross-entropy efficiency: {self.efficiency()}")
             self.print_min_distances()
     
-    def particle_swarm_optimize(self, n_iterations, particles, cycles, w, c1, c2, verbose):
+    def particle_swarm_optimize(self, n_iterations, n_particles, cycles, w, c1, c2, verbose):
         """
         Optimize turbine positions using particle swarm optimization.
         """
         for cycle in range(cycles):
+            self.update_all_distances()
             for i in range(self.n_turbines):
-
-                # Get the inital turbine position and efficiency
+                # Get the initial turbine position and efficiency
                 start_x = self.turbines[i].x
                 start_y = self.turbines[i].y
                 start_efficiency = self.efficiency()
 
-                #Initalize the global best for the particle swarm
+                # Initialize the global best for the particle swarm
                 cur_best_x = start_x
                 cur_best_y = start_y
                 cur_best_efficiency = start_efficiency
 
-                #Initalize the particles
+                # Initialize the particles with random positions around the current turbine
                 particles = []
-                for j in range(particles):
-                    particles.append(Particle(start_x, start_y, start_efficiency, w, c1, c2))
+                for j in range(n_particles):
+                    # Add random variation to initial position
+                    init_x = start_x + np.random.normal(0, 0.5)
+                    init_y = start_y + np.random.normal(0, 0.5)
+                    
+                    # Ensure initial position is within constraints
+                    while not self.check_constraints(init_x, init_y):
+                        init_x = start_x + np.random.normal(0, 0.5)
+                        init_y = start_y + np.random.normal(0, 0.5)
+                    
+                    particles.append(Particle(init_x, init_y, start_efficiency, w, c1, c2))
                 
                 # Run particle swarm optimization
-                for i in range(n_iterations):
-                    cur_best_x, cur_best_y, cur_best_efficiency = self.update_particles(particles, i, cur_best_x, cur_best_y, cur_best_efficiency)
+                prev_best_efficiency = cur_best_efficiency
+                no_improvement_count = 0
+                
+                for n in range(n_iterations):
+                    cur_best_x, cur_best_y, cur_best_efficiency = self.update_particles(particles, i, cur_best_x, 
+                                                                                        cur_best_y, cur_best_efficiency)
+                    
+                    # Check for early stopping
+                    if abs(cur_best_efficiency - prev_best_efficiency) < 1e-6:
+                        no_improvement_count += 1
+                        if no_improvement_count >= 5:  # Stop if no improvement for 5 iterations
+                            break
+                    else:
+                        no_improvement_count = 0
+                    
+                    prev_best_efficiency = cur_best_efficiency
                 
                 # Set the turbine to the new best location
                 self.turbines[i].update_location(cur_best_x, cur_best_y)
 
                 # Update the overall efficiency
                 self.update_all_distances()
+                
             if verbose:
                 print(f"Cycle {cycle} of {cycles}: Current efficiency: {self.efficiency()}")
                 self.print_cur_error()
+                print("\n")
+                
         if verbose:
             print(f"Final efficiency: {self.efficiency()}")
             self.print_min_distances()
@@ -415,12 +440,33 @@ class WindFarm:
         new_best_efficiency = cur_best_efficiency
         new_best_x = cur_best_x
         new_best_y = cur_best_y
+        
         for particle in particles:
             # Update the location of the particle using particle swarm algorithm
             particle.update_location(cur_best_x, cur_best_y)
 
             # Get the new location of the particle
             particle_x, particle_y = particle.get_location()
+            
+            # If the new position is invalid, try to find a valid position
+            max_attempts = 3
+            attempt = 0
+            while not self.check_constraints(particle_x, particle_y) and attempt < max_attempts:
+                # Reduce velocity and try again
+                particle.vx *= 0.5
+                particle.vy *= 0.5
+                particle.x = particle.best_x + particle.vx
+                particle.y = particle.best_y + particle.vy
+                particle_x, particle_y = particle.get_location()
+                attempt += 1
+            
+            # If still invalid, reset to best known position
+            if not self.check_constraints(particle_x, particle_y):
+                particle.x = particle.best_x
+                particle.y = particle.best_y
+                particle.vx = 0
+                particle.vy = 0
+                particle_x, particle_y = particle.get_location()
 
             # Update the temporary location of the turbine to the new location of the particle
             self.turbines[turbine_index].update_temp_location(particle_x, particle_y)
@@ -442,6 +488,7 @@ class WindFarm:
                 new_best_efficiency = new_efficiency
                 new_best_x = particle_x
                 new_best_y = particle_y
+                
         # Return the new best location and efficiency
         return new_best_x, new_best_y, new_best_efficiency
                 

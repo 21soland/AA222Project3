@@ -12,20 +12,25 @@ class Particle:
         self.w = w
         self.c1 = c1
         self.c2 = c2
-        self.x_best = turbine_x
-        self.y_best = turbine_y 
-        self.v = 0
-        self.best_efficiency = efficiency
+        self.vx = 0  # Separate velocity for x
+        self.vy = 0  # Separate velocity for y
     
     def get_location(self):
         return self.x, self.y
     
     def update_location(self, overall_best_x, overall_best_y):
-        distance_to_local_best = np.linalg.norm(np.array([self.x, self.y]) - np.array([self.best_x, self.best_y]))
-        distance_to_global_best = np.linalg.norm(np.array([self.x, self.y]) - np.array([overall_best_x, overall_best_y]))
-        self.v = self.w * self.v + self.c1 * np.random.rand() * (distance_to_local_best) + self.c2 * np.random.rand() * (distance_to_global_best)
-        self.x = self.x + self.v
-        self.y = self.y + self.v
+        # Update velocities for x and y separately
+        self.vx = (self.w * self.vx + 
+                  self.c1 * np.random.rand() * (self.best_x - self.x) + 
+                  self.c2 * np.random.rand() * (overall_best_x - self.x))
+        
+        self.vy = (self.w * self.vy + 
+                  self.c1 * np.random.rand() * (self.best_y - self.y) + 
+                  self.c2 * np.random.rand() * (overall_best_y - self.y))
+        
+        # Update positions
+        self.x += self.vx
+        self.y += self.vy
     
     def get_efficiency(self):
         return self.efficiency

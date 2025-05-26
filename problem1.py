@@ -5,32 +5,9 @@ import time
 # Known optimal solutions for different numbers of turbines
 ANSWERS = [13.4536, 10.3527, 9.114, 6.471, 5.8309, 5.2969, 5.01848, 4.44476, 4.2014]
 
-def optimize(n_turbines, n_iterations):
-    """
-    Legacy optimization function (not implemented)
-    """
-    raise NotImplementedError("Not implemented")
-
-
-def optimize(n_turbines):
-    """
-    Main optimization function for wind farm layout.
-    
-    Args:
-        n_turbines (int): Number of turbines to optimize
-        
-    Returns:
-        tuple: (efficiency, average_min_distance)
-    """
-    # Initialize wind farm and track best configuration
-    windfarm = WindFarm(n_turbines)
+def brute_force_optimize(n_turbines,brute_force_iterations,windfarm):
     best_efficiency = windfarm.efficiency()
-    print(f"\nInitial wind farm efficiency: {best_efficiency}\n")
     best_configuration = windfarm.turbines
-    
-    # Brute force optimization parameters
-    brute_force_iterations = 500
-    
     # Brute force optimization loop
     for iteration in range(brute_force_iterations):
         # Reset and redistribute turbines
@@ -39,7 +16,7 @@ def optimize(n_turbines):
         
         # Quick optimization pass
         windfarm.cross_entropy_optimize(
-            n_iterations=4,
+            n_iterations=3,
             samples=10,
             cycles=3,
             decay1=0.75,
@@ -69,13 +46,33 @@ def optimize(n_turbines):
     print(f"Average minimum distance: {windfarm.average_min_distance()}")
     print(f"Error: {abs(best_efficiency - ANSWERS[n_turbines-2])}\n")
 
+def cross_entropy_optimize(n_turbines):
+    """
+    Main optimization function for wind farm layout.
+    
+    Args:
+        n_turbines (int): Number of turbines to optimize
+        
+    Returns:
+        tuple: (efficiency, average_min_distance)
+    """
+    # Initialize wind farm and track best configuration
+    windfarm = WindFarm(n_turbines)
+    best_efficiency = windfarm.efficiency()
+    print(f"\nInitial wind farm efficiency: {best_efficiency}\n")
+    best_configuration = windfarm.turbines
+    
+    # Brute force optimization parameters
+    brute_force_iterations = 200
+    brute_force_optimize(n_turbines,brute_force_iterations,windfarm)
+    
     # Final detailed optimization
     windfarm.reset_sigma1()
     windfarm.cross_entropy_optimize(
         n_iterations=8,      # Number of iterations per point
-        samples=1000,        # Number of sample points
-        cycles=30,           # Number of optimization cycles
-        decay1=0.89,          # Cycle decay rate
+        samples=2000,        # Number of sample points
+        cycles=10,           # Number of optimization cycles
+        decay1=0.5,          # Cycle decay rate
         decay2=0.5,          # Point decay rate
         random_prob=0.25,    # Probability of random rotation/expansion
         verbose=True
@@ -84,6 +81,30 @@ def optimize(n_turbines):
     
     return windfarm.efficiency(), windfarm.average_min_distance()
 
+def particle_swarm_optimize(n_turbines):
+    """
+    Main optimization function for wind farm layout using particle swarm optimization.
+    """
+    windfarm = WindFarm(n_turbines)
+
+    brute_force_iterations = 200
+
+    # Run brute force optimization with cross entropy
+    # This finds a good starting point for the particle swarm optimization
+    brute_force_optimize(n_turbines,brute_force_iterations,windfarm)
+
+    # Find the definitive global optimum with particle swarm optimization
+    windfarm.particle_swarm_optimize(
+        n_iterations=100, # How many times the particles will update their position
+        n_particles=500, # How many particles to use
+        cycles=10, # How many times we cycle through each turbine
+        w=0.5, # Weight of the particle's current position
+        c1=1, # Weight of the particle's best position
+        c2=1, # Weight of the global best position
+        verbose=True)
+    windfarm.update_all_distances()
+
+    return windfarm.efficiency(), windfarm.average_min_distance()
 
 def main():
     """
@@ -95,7 +116,7 @@ def main():
     # Run optimization for 2-10 turbines
     for n_turbines in range(2, 11):
         # Run optimization
-        efficiency, average_min_distance = optimize(n_turbines)
+        efficiency, average_min_distance = cross_entropy_optimize(n_turbines)
         
         # Save results to CSV
         with open('results.csv', 'a') as f:
@@ -122,7 +143,7 @@ def temp():
     for i in range(12):
         print(f"\nIteration {i}")
         n_turbines = 8
-        efficiency, average_min_distance = optimize(n_turbines)
+        efficiency, average_min_distance = cross_entropy_optimize(n_turbines)
         
         print(f"\nAverage minimum distance: {average_min_distance}")
         print(f"Efficiency: {efficiency}")
