@@ -25,7 +25,6 @@ def optimize(n_turbines):
     # Initialize wind farm and track best configuration
     windfarm = WindFarm(n_turbines)
     best_efficiency = windfarm.efficiency()
-    best_dist_std = windfarm.dist_std()
     print(f"\nInitial wind farm efficiency: {best_efficiency}\n")
     best_configuration = windfarm.turbines
     
@@ -40,49 +39,43 @@ def optimize(n_turbines):
         
         # Quick optimization pass
         windfarm.cross_entropy_optimize(
-            n_iterations=2,
+            n_iterations=4,
             samples=10,
             cycles=3,
-            decay1=0.5,
-            decay2=0.25,
+            decay1=0.75,
+            decay2=0.5,
             random_prob=0.5,
             verbose=False
         )
         
-        # Update best configuration if current is better
-        cur_std = windfarm.dist_std()
-        if cur_std < best_dist_std:
-            best_dist_std = cur_std
-            best_configuration = windfarm.turbines
-        
-        """# Update best efficiency if current is better
+        # Update best efficiency if current is better
         cur_efficiency = windfarm.efficiency()
         if cur_efficiency > best_efficiency:
             best_efficiency = cur_efficiency
-            best_configuration = windfarm.turbines"""
+            best_configuration = windfarm.turbines
         
             
         # Progress reporting
         if iteration % 100 == 0:
             print(f"Brute force iteration {iteration} of {brute_force_iterations}, "
-                  f"best efficiency: {best_dist_std}")
+                  f"best efficiency: {best_efficiency}")
         
         # Reset sigma
         windfarm.reset_sigma1()
     
     # Set the best configuration found
     windfarm.set_turbines(best_configuration)
-    print(f"\nBrute force wind farm efficiency: {best_dist_std}")
-    print(f"Average minimum distance: {best_dist_std}")
-    print(f"Error: {abs(best_dist_std - ANSWERS[n_turbines-2])}\n")
+    print(f"\nBrute force wind farm efficiency: {best_efficiency}")
+    print(f"Average minimum distance: {windfarm.average_min_distance()}")
+    print(f"Error: {abs(best_efficiency - ANSWERS[n_turbines-2])}\n")
 
     # Final detailed optimization
     windfarm.reset_sigma1()
     windfarm.cross_entropy_optimize(
-        n_iterations=5,      # Number of iterations per point
-        samples=500,        # Number of sample points
-        cycles=12,           # Number of optimization cycles
-        decay1=0.7,          # Cycle decay rate
+        n_iterations=8,      # Number of iterations per point
+        samples=1000,        # Number of sample points
+        cycles=30,           # Number of optimization cycles
+        decay1=0.89,          # Cycle decay rate
         decay2=0.5,          # Point decay rate
         random_prob=0.25,    # Probability of random rotation/expansion
         verbose=True

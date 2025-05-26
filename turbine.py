@@ -1,6 +1,6 @@
 import numpy as np
 
-EPSILON = 1e-6
+EPSILON = 0
 
 class Turbine:
     """
@@ -93,11 +93,11 @@ class Turbine:
         self.temp_min_distance_index = self.actual_min_distance_index
         self.temp_location = self.location
     
-    def diff_from_mean(self,avg_dist, std):
+    def diff_from_mean(self,avg_dist):
         """
         Calculate the difference from the average distance.
         """
-        return abs(self.temp_min_distance - avg_dist) / std
+        return abs(self.temp_min_distance - avg_dist)
 
     def update_temp_distance(self, turbine):
         """
