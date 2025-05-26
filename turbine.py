@@ -58,6 +58,54 @@ class Turbine:
         self.n_best_last_x = x
         self.n_best_last_y = y
     
+    def get_constraint(self,x,y):
+        # Check boundary constraints
+        if x <= 0 or x >= 10 or y <= 0 or y >= 10:
+            return False
+            
+        # Check circular constraints
+        if (x - 5)**2 + (y - 5)**2 < 4:
+            return False
+        if (x)**2 + (y - 0)**2 < 1:
+            return False
+        if (x)**2 + (y - 10)**2 < 1:
+            return False
+            
+        return True
+
+    def rotate(self, angle, center_x, center_y):
+        """
+        Rotate the particle around a center point.
+        
+        Args:
+            angle (float): Angle to rotate in degrees
+            center_x (float): x-coordinate of the center point
+            center_y (float): y-coordinate of the center point
+        """
+        # Convert angle to radians
+        angle_rad = np.radians(angle)
+        
+        # Translate coordinates to origin
+        x_centered = self.x - center_x
+        y_centered = self.y - center_y
+        
+        # Rotate coordinates
+        x_rotated = x_centered * np.cos(angle_rad) - y_centered * np.sin(angle_rad)
+        y_rotated = x_centered * np.sin(angle_rad) + y_centered * np.cos(angle_rad)
+        
+        # Translate back to original position
+        new_x = x_rotated + center_x
+        new_y = y_rotated + center_y
+        
+        # Find the closest point in bounds
+        while not self.get_constraint(new_x, new_y):
+            sigma = 0.5
+            new_x = new_x + np.random.normal(0, sigma)
+            new_y = new_y + np.random.normal(0, sigma)
+            sigma *= 1.1
+        self.x = new_x
+        self.y = new_y
+    
     def get_n_best_last(self):
         """Get the last n best points."""
         return self.n_best_last_efficiencies, self.n_best_last_stds, self.n_best_last_x, self.n_best_last_y
@@ -127,6 +175,8 @@ class Turbine:
             float: Turbine efficiency
         """
         return 1 / (1 + (1/(self.actual_min_distance + EPSILON)))
+    
+
     
     def temp_efficiency(self):
         """

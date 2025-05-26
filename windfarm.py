@@ -210,6 +210,19 @@ class WindFarm:
         if avg_deviation < 1e-6:
             return True
         return False
+    
+    def get_center(self):
+        """
+        Get the center of the wind farm.
+        """
+        center_x = 0
+        center_y = 0
+        for turbine in self.turbines:
+            center_x += turbine.x
+            center_y += turbine.y
+        center_x /= self.n_turbines
+        center_y /= self.n_turbines
+        return np.array([center_x, center_y])
 
     
     def cross_entropy_optimize(self, n_iterations, samples, cycles, decay1, decay2, random_prob, verbose):
@@ -369,7 +382,17 @@ class WindFarm:
             print(f"Final cross-entropy efficiency: {self.efficiency()}")
             self.print_min_distances()
     
-    def particle_swarm_optimize(self, n_iterations, n_particles, cycles, w, c1, c2, verbose):
+    def rotate_turbines(self):
+        """
+        Rotate all turbines by a random amount.
+        """
+        center = self.get_center()
+        angle = np.random.uniform(0, 2*np.pi)
+        for turbine in self.turbines:
+            turbine.rotate(angle, center[0], center[1])
+        self.update_all_distances()
+    
+    def particle_swarm_optimize(self, n_iterations, n_particles, cycles, w, c1, c2, rotate_prob, verbose):
         """
         Optimize turbine positions using particle swarm optimization.
         """
@@ -423,12 +446,20 @@ class WindFarm:
 
                 # Update the overall efficiency
                 self.update_all_distances()
-                
+            
+            # Randomly rotate the turbines to prevent local optima
+            if rotate_prob > np.random.random():
+                self.rotate_turbines()
+                self.update_all_distances()
+                rotate_prob *= 0.5
+                if verbose:
+                    print("Rotated turbines")
+                    print("\n")
+
             if verbose:
                 print(f"Cycle {cycle} of {cycles}: Current efficiency: {self.efficiency()}")
                 self.print_cur_error()
                 print("\n")
-                
         if verbose:
             print(f"Final efficiency: {self.efficiency()}")
             self.print_min_distances()

@@ -7,7 +7,8 @@ electricity_price = 0.33
 power_per_turbine = 3300 * 8670 * 0.75
 cost_per_turbine = 5400000
 
-distances = [13.4536, 10.3527, 9.114, 6.471, 5.8309, 5.2969, 5.01848, 4.44476, 4.2014]
+# Get the the second column of the csv file
+distances = np.genfromtxt('results.csv', delimiter=',', usecols=(1))
 
 def dist_from_n(n):
     d = np.zeros(len(n))

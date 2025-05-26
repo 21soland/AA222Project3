@@ -35,6 +35,30 @@ class Particle:
     def get_efficiency(self):
         return self.efficiency
     
+    def rotate(self, angle, center_x, center_y):
+        """
+        Rotate the particle around a center point.
+        
+        Args:
+            angle (float): Angle to rotate in degrees
+            center_x (float): x-coordinate of the center point
+            center_y (float): y-coordinate of the center point
+        """
+        # Convert angle to radians
+        angle_rad = np.radians(angle)
+        
+        # Translate coordinates to origin
+        x_centered = self.x - center_x
+        y_centered = self.y - center_y
+        
+        # Rotate coordinates
+        x_rotated = x_centered * np.cos(angle_rad) - y_centered * np.sin(angle_rad)
+        y_rotated = x_centered * np.sin(angle_rad) + y_centered * np.cos(angle_rad)
+        
+        # Translate back to original position
+        self.x = x_rotated + center_x
+        self.y = y_rotated + center_y
+
     def set_efficiency(self, efficiency):
         self.efficiency = efficiency
         if efficiency > self.best_efficiency:
